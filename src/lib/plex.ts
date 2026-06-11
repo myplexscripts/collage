@@ -164,47 +164,64 @@ export async function fetchLibraries(
 const PAGE_SIZE = 400;
 const MAX_ITEMS = 6000;
 
+function parseMetadata(page: any[], library: PlexLibrary): PlexItem[] {
+  const items: PlexItem[] = [];
+  for (const m of page) {
+    if (!m.thumb) continue;
+    items.push({
+      ratingKey: String(m.ratingKey),
+      title: m.title,
+      year: m.year,
+      thumb: m.thumb,
+      art: m.art,
+      addedAt: m.addedAt,
+      lastViewedAt: m.lastViewedAt,
+      viewCount: m.viewCount,
+      leafCount: m.leafCount,
+      viewedLeafCount: m.viewedLeafCount,
+      rating: m.rating,
+      audienceRating: m.audienceRating,
+      userRating: m.userRating,
+      contentRating: m.contentRating,
+      type: library.type,
+      libraryKey: library.key,
+      genres: ((m.Genre || []) as any[]).map((g) => g.tag).filter(Boolean),
+    });
+  }
+  return items;
+}
+
 export async function fetchLibraryItems(
   baseUri: string,
   token: string,
   library: PlexLibrary,
 ): Promise<PlexItem[]> {
   const type = library.type === "movie" ? 1 : 2;
-  const items: PlexItem[] = [];
-  for (let start = 0; start < MAX_ITEMS; start += PAGE_SIZE) {
+
+  async function fetchPage(start: number) {
     const url =
       `${baseUri}/library/sections/${library.key}/all?type=${type}` +
       `&X-Plex-Container-Start=${start}&X-Plex-Container-Size=${PAGE_SIZE}` +
       `&X-Plex-Token=${token}`;
     const res = await fetch(url, { headers: JSON_HEADERS });
-    if (!res.ok) throw new Error(`Could not load "${library.title}" (${res.status})`);
-    const data = await res.json();
-    const mc = data.MediaContainer || {};
-    const page = (mc.Metadata || []) as any[];
-    for (const m of page) {
-      if (!m.thumb) continue;
-      items.push({
-        ratingKey: String(m.ratingKey),
-        title: m.title,
-        year: m.year,
-        thumb: m.thumb,
-        art: m.art,
-        addedAt: m.addedAt,
-        lastViewedAt: m.lastViewedAt,
-        viewCount: m.viewCount,
-        leafCount: m.leafCount,
-        viewedLeafCount: m.viewedLeafCount,
-        rating: m.rating,
-        audienceRating: m.audienceRating,
-        userRating: m.userRating,
-        contentRating: m.contentRating,
-        type: library.type,
-        libraryKey: library.key,
-        genres: ((m.Genre || []) as any[]).map((g) => g.tag).filter(Boolean),
-      });
-    }
-    const total = mc.totalSize ?? mc.size ?? 0;
-    if (start + page.length >= total || page.length === 0) break;
+    if (!res.ok)
+      throw new Error(`Could not load "${library.title}" (${res.status})`);
+    const mc = (await res.json()).MediaContainer || {};
+    return {
+      metadata: (mc.Metadata || []) as any[],
+      total: (mc.totalSize ?? mc.size ?? 0) as number,
+    };
+  }
+
+  // First page tells us the total; the rest load in parallel.
+  const first = await fetchPage(0);
+  const items = parseMetadata(first.metadata, library);
+  const total = Math.min(first.total || first.metadata.length, MAX_ITEMS);
+  if (total > PAGE_SIZE) {
+    const starts: number[] = [];
+    for (let s = PAGE_SIZE; s < total; s += PAGE_SIZE) starts.push(s);
+    const pages = await Promise.all(starts.map(fetchPage));
+    for (const p of pages) items.push(...parseMetadata(p.metadata, library));
   }
   return items;
 }

@@ -43,11 +43,32 @@ Year Wrapped, Film Noir, Scrapbook, Gold Hive, Phone Wallpaper.
 
 **Export** — PNG or JPEG at canvas presets from Full HD to 4K, phone
 (1290×2796), ultrawide, banner and A3 print. Poster art is re-fetched at a
-resolution bucket matched to the export tile size so it stays sharp.
+resolution bucket matched to the export tile size so it stays sharp. On
+phones a native **Share** button hands the image straight to your apps.
+
+**Desktop & mobile** — desktops get a three-pane studio (tab rail, control
+sidebar, live canvas); phones get a full-screen preview with a bottom tab
+bar and slide-up control sheets, safe-area aware with touch-sized targets.
 
 Settings persist in `localStorage`, the random seed is stable until you hit
 **Shuffle**, and the live preview renders at screen resolution while exports
 render at full size.
+
+## Performance
+
+- **Progressive preview** — the collage paints immediately and posters
+  stream in as they download (16 in parallel), with a non-blocking
+  progress pill instead of a loading wall.
+- **Adaptive resolution** — preview fetches posters at a transcode width
+  matched to the actual on-screen tile size; exports re-fetch at the
+  bucket the output resolution needs.
+- **Stale-while-revalidate library** — re-entering the studio shows your
+  collage instantly from cached items while the library refreshes silently.
+- **Parallel everything** — library pages, user profile + server discovery,
+  and multi-library fetches all run concurrently; server connections race
+  and the fastest direct route wins.
+- **Render once, reuse forever** — poster images and effect-filtered
+  copies are cached for the whole session.
 
 ## Development
 

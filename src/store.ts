@@ -33,6 +33,7 @@ interface State {
   libraries: PlexLibrary[];
   selectedLibraryKeys: string[];
   items: PlexItem[];
+  itemsKey: string | null;
   itemsLoading: boolean;
   excluded: Set<string>;
   settings: CollageSettings;
@@ -80,6 +81,7 @@ export const useStore = create<State>((set, get) => ({
   libraries: [],
   selectedLibraryKeys: [],
   items: [],
+  itemsKey: null,
   itemsLoading: false,
   excluded: new Set<string>(),
   settings: loadSettings(),
@@ -92,24 +94,27 @@ export const useStore = create<State>((set, get) => ({
       return;
     }
     try {
-      const user = await fetchUser(token);
-      set({ token, user, phase: "setup", serversLoading: true });
-      const servers = await fetchServers(token);
-      set({ servers, serversLoading: false });
+      set({ token, phase: "setup", serversLoading: true });
+      const [user, servers] = await Promise.all([
+        fetchUser(token),
+        fetchServers(token),
+      ]);
+      set({ user, servers, serversLoading: false });
     } catch {
       localStorage.removeItem(TOKEN_KEY);
-      set({ phase: "login", token: null, user: null });
+      set({ phase: "login", token: null, user: null, serversLoading: false });
     }
   },
 
   loginSuccess: async (token) => {
     localStorage.setItem(TOKEN_KEY, token);
-    set({ token, error: null });
+    set({ token, error: null, phase: "setup", serversLoading: true });
     try {
-      const user = await fetchUser(token);
-      set({ user, phase: "setup", serversLoading: true });
-      const servers = await fetchServers(token);
-      set({ servers, serversLoading: false });
+      const [user, servers] = await Promise.all([
+        fetchUser(token),
+        fetchServers(token),
+      ]);
+      set({ user, servers, serversLoading: false });
     } catch (e) {
       set({ error: (e as Error).message, serversLoading: false });
     }
@@ -127,6 +132,7 @@ export const useStore = create<State>((set, get) => ({
       libraries: [],
       selectedLibraryKeys: [],
       items: [],
+      itemsKey: null,
       excluded: new Set(),
     });
   },
@@ -158,14 +164,19 @@ export const useStore = create<State>((set, get) => ({
   },
 
   enterStudio: async () => {
-    set({ phase: "studio", excluded: new Set() });
+    set({ phase: "studio" });
     await get().reloadItems();
   },
 
   reloadItems: async () => {
     const { baseUri, server, libraries, selectedLibraryKeys } = get();
     if (!baseUri || !server) return;
-    set({ itemsLoading: true, error: null });
+    const key =
+      server.clientIdentifier + "|" + [...selectedLibraryKeys].sort().join(",");
+    // stale-while-revalidate: if we already have items for this exact
+    // selection, keep showing them and refresh silently in the background
+    const haveFresh = get().itemsKey === key && get().items.length > 0;
+    if (!haveFresh) set({ itemsLoading: true, error: null, excluded: new Set() });
     try {
       const selected = libraries.filter((l) =>
         selectedLibraryKeys.includes(l.key),
@@ -175,7 +186,7 @@ export const useStore = create<State>((set, get) => ({
           fetchLibraryItems(baseUri, server.accessToken, lib),
         ),
       );
-      set({ items: results.flat(), itemsLoading: false });
+      set({ items: results.flat(), itemsLoading: false, itemsKey: key });
     } catch (e) {
       set({ itemsLoading: false, error: (e as Error).message });
     }

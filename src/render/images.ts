@@ -27,18 +27,24 @@ export function widthBucket(tilePx: number): number {
   return 1280;
 }
 
+export interface LoadHandlers {
+  onProgress?: (done: number, total: number) => void;
+  /** fires per poster as it arrives — enables progressive rendering */
+  onImage?: (item: PlexItem, img: HTMLImageElement) => void;
+}
+
 export async function loadPosters(
   baseUri: string,
   token: string,
   items: PlexItem[],
   bucket: number,
-  onProgress?: (done: number, total: number) => void,
+  handlers?: LoadHandlers,
 ): Promise<Map<string, HTMLImageElement>> {
   const out = new Map<string, HTMLImageElement>();
   let done = 0;
   const total = items.length;
   const queue = items.slice();
-  const CONCURRENCY = 12;
+  const CONCURRENCY = 16;
 
   async function worker() {
     for (;;) {
@@ -50,12 +56,13 @@ export async function loadPosters(
             posterUrl(baseUri, token, item.thumb, bucket),
           );
           out.set(item.ratingKey, img);
+          handlers?.onImage?.(item, img);
         } catch {
           // skip broken posters; the tile renders a placeholder instead
         }
       }
       done++;
-      onProgress?.(done, total);
+      handlers?.onProgress?.(done, total);
     }
   }
   await Promise.all(
