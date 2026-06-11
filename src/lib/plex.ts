@@ -33,6 +33,54 @@ function plexTvParams(token?: string): string {
 
 const JSON_HEADERS = { Accept: "application/json" };
 
+/** Thrown when Plex rejects the token (401/403) so the app can re-auth. */
+export class AuthError extends Error {
+  constructor(message = "Your Plex session expired. Please sign in again.") {
+    super(message);
+    this.name = "AuthError";
+  }
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * fetch with a timeout, exponential-backoff retries for transient failures,
+ * and typed auth errors. Auth failures (401/403) are never retried.
+ */
+async function apiFetch(
+  url: string,
+  opts: { timeoutMs?: number; retries?: number; method?: string } = {},
+): Promise<Response> {
+  const { timeoutMs = 12000, retries = 3, method = "GET" } = opts;
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: JSON_HEADERS,
+        signal: ctrl.signal,
+      });
+      if (res.status === 401 || res.status === 403) throw new AuthError();
+      if (res.status >= 500 && attempt < retries) {
+        await sleep(400 * 2 ** attempt);
+        continue;
+      }
+      return res;
+    } catch (e) {
+      if (e instanceof AuthError) throw e;
+      lastErr = e;
+      if (attempt < retries) await sleep(400 * 2 ** attempt);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error("Network request failed. Check your connection.");
+}
+
 export interface PlexPin {
   id: number;
   code: string;
@@ -68,17 +116,14 @@ export async function checkPin(pin: PlexPin): Promise<string | null> {
 }
 
 export async function fetchUser(token: string): Promise<PlexUser> {
-  const res = await fetch(`https://plex.tv/api/v2/user?${plexTvParams(token)}`, {
-    headers: JSON_HEADERS,
-  });
-  if (!res.ok) throw new Error(`Sign-in expired (${res.status})`);
+  const res = await apiFetch(`https://plex.tv/api/v2/user?${plexTvParams(token)}`);
+  if (!res.ok) throw new AuthError();
   return res.json();
 }
 
 export async function fetchServers(token: string): Promise<PlexServer[]> {
-  const res = await fetch(
+  const res = await apiFetch(
     `https://plex.tv/api/v2/resources?includeHttps=1&includeRelay=1&${plexTvParams(token)}`,
-    { headers: JSON_HEADERS },
   );
   if (!res.ok) throw new Error(`Could not load your servers (${res.status})`);
   const data = await res.json();
@@ -150,10 +195,7 @@ export async function fetchLibraries(
   baseUri: string,
   token: string,
 ): Promise<PlexLibrary[]> {
-  const res = await fetch(
-    `${baseUri}/library/sections?X-Plex-Token=${token}`,
-    { headers: JSON_HEADERS },
-  );
+  const res = await apiFetch(`${baseUri}/library/sections?X-Plex-Token=${token}`);
   if (!res.ok) throw new Error(`Could not load libraries (${res.status})`);
   const data = await res.json();
   return ((data.MediaContainer?.Directory || []) as any[])
@@ -203,7 +245,7 @@ export async function fetchLibraryItems(
       `${baseUri}/library/sections/${library.key}/all?type=${type}` +
       `&X-Plex-Container-Start=${start}&X-Plex-Container-Size=${PAGE_SIZE}` +
       `&X-Plex-Token=${token}`;
-    const res = await fetch(url, { headers: JSON_HEADERS });
+    const res = await apiFetch(url, { timeoutMs: 20000 });
     if (!res.ok)
       throw new Error(`Could not load "${library.title}" (${res.status})`);
     const mc = (await res.json()).MediaContainer || {};

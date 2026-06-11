@@ -25,15 +25,30 @@ preferred, relay fallback).
 | Honeycomb | Hexagonal tiles |
 | Filmstrip | Tilted cinema reels with sprocket holes |
 
+Every layout shows each selected poster exactly once (no duplicate filler),
+packs cleanly with **auto-column** sizing matched to the canvas aspect, and
+fills the frame edge to edge.
+
 **Content controls** — multiple libraries (movies + TV) at once, sort by
 recently added / recently watched / top rated / newest / A–Z / seeded
 shuffle, genre, year-range, minimum-rating and unwatched-only filters,
 poster count, plus a hand-pick modal to hide specific posters.
 
-**Style controls** — gap, margin, full bleed, corner radius, drop shadows,
-borders, 7 color effects (Vivid, Faded, Vintage, Sepia, Mono, Noir),
-backgrounds (10 gradient presets, custom two-color gradient with angle,
-solid, or a blurred-poster backdrop).
+**Style controls** — auto or manual columns, gap, margin, full bleed, corner
+radius, drop shadows, borders, 7 color effects (Vivid, Faded, Vintage,
+Sepia, Mono, Noir), backgrounds (10 gradient presets, custom two-color
+gradient with angle, solid, or a blurred-poster backdrop with adjustable
+dim).
+
+**Finishing passes** — vignette, edge-fade (feathers the collage into the
+background, ideal for wallpapers) and film grain — the difference between a
+screenshot and a poster.
+
+**Saved designs** — name and save any collage with a thumbnail, then open,
+duplicate or delete it later. Stored in your browser.
+
+**Keyboard shortcuts** — `S` shuffle, `D` designs, `1`–`6` switch tabs,
+`Esc` to close. A one-time welcome introduces them.
 
 **Title overlay** — 5 display fonts, position, size, letter spacing,
 uppercase, color, and an optional darkened band behind the text.
@@ -69,6 +84,9 @@ render at full size.
   and the fastest direct route wins.
 - **Render once, reuse forever** — poster images and effect-filtered
   copies are cached for the whole session.
+- **Resilience** — Plex requests retry with backoff on transient failures,
+  expired tokens route cleanly back to sign-in, and a shimmering skeleton
+  fills the canvas while the first posters stream in.
 
 ## Development
 

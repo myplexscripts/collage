@@ -127,10 +127,20 @@ export function StylePanel() {
       )}
 
       {settings.bgMode === "posterBlur" && (
-        <p className="hint">
-          The first poster in your selection is blown up, blurred and dimmed
-          behind the collage.
-        </p>
+        <>
+          <p className="hint">
+            The first poster in your selection is blown up and blurred behind
+            the collage.
+          </p>
+          <Field label="Backdrop dim" trailing={`${settings.bgDim}%`}>
+            <Slider
+              value={settings.bgDim}
+              min={0}
+              max={100}
+              onChange={(v) => update({ bgDim: v })}
+            />
+          </Field>
+        </>
       )}
     </div>
   );

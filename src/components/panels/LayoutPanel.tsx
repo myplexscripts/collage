@@ -62,14 +62,21 @@ export function LayoutPanel() {
         </div>
       </Field>
 
-      <Field label="Columns" trailing={String(settings.columns)}>
-        <Slider
-          value={settings.columns}
-          min={3}
-          max={16}
-          onChange={(v) => update({ columns: v })}
-        />
-      </Field>
+      <Toggle
+        label="Auto columns"
+        checked={settings.autoColumns}
+        onChange={(v) => update({ autoColumns: v })}
+      />
+      {!settings.autoColumns && (
+        <Field label="Columns" trailing={String(settings.columns)}>
+          <Slider
+            value={settings.columns}
+            min={2}
+            max={20}
+            onChange={(v) => update({ columns: v })}
+          />
+        </Field>
+      )}
 
       <Field label="Gap" trailing={String(settings.gap)}>
         <Slider
@@ -85,7 +92,7 @@ export function LayoutPanel() {
           <Slider
             value={settings.padding}
             min={0}
-            max={120}
+            max={140}
             onChange={(v) => update({ padding: v })}
           />
         </Field>

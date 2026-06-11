@@ -88,6 +88,7 @@ export interface CollageSettings {
   canvasPreset: string;
   canvasWidth: number;
   canvasHeight: number;
+  autoColumns: boolean;
   columns: number;
   /** All size-ish values are in "per-mille of canvas width" units */
   gap: number;
@@ -103,6 +104,11 @@ export interface CollageSettings {
   bgColor: string;
   bgColor2: string;
   bgAngle: number;
+  bgDim: number;
+  /** Finishing passes, each 0–100 */
+  vignette: number;
+  edgeFade: number;
+  grain: number;
   titleEnabled: boolean;
   titleText: string;
   titleFont: string;
@@ -121,4 +127,13 @@ export interface CollageSettings {
   yearMax: number | null;
   unwatchedOnly: boolean;
   minRating: number;
+}
+
+export interface SavedDesign {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  thumbnail: string;
+  settings: CollageSettings;
 }

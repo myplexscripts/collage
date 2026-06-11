@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { registerPreviewCanvas } from "../lib/designs";
 import { renderCollage } from "../render/draw";
 import { loadPosters, widthBucket } from "../render/images";
 import { selectCollageItems, useStore } from "../store";
@@ -7,6 +8,17 @@ import { selectCollageItems, useStore } from "../store";
 const PREVIEW_MAX_W = 2200;
 /** Preview never fetches posters above this transcode width. */
 const PREVIEW_MAX_BUCKET = 480;
+
+function estimateColumns(
+  selectionLen: number,
+  W: number,
+  H: number,
+  autoColumns: boolean,
+  manual: number,
+): number {
+  if (!autoColumns) return Math.max(2, manual);
+  return Math.max(3, Math.round(Math.sqrt(selectionLen * (W / H) * 1.5)));
+}
 
 export function Preview() {
   const settings = useStore((s) => s.settings);
@@ -19,17 +31,22 @@ export function Preview() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const renderToken = useRef(0);
-  // posters drawn so far, plus the transcode width each was fetched at so
-  // low-res copies get upgraded when tiles grow
   const imagesRef = useRef(new Map<string, HTMLImageElement>());
   const bucketsRef = useRef(new Map<string, number>());
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [painted, setPainted] = useState(false);
   const [fit, setFit] = useState({ w: 800, h: 450 });
 
   const selection = useMemo(
     () => selectCollageItems(items, excluded, settings),
     [items, excluded, settings],
   );
+
+  // expose the live canvas so "Save design" can thumbnail it
+  useEffect(() => {
+    registerPreviewCanvas(canvasRef.current);
+    return () => registerPreviewCanvas(null);
+  }, []);
 
   // fit the canvas display box to its container
   useEffect(() => {
@@ -69,7 +86,6 @@ export function Preview() {
       );
     };
 
-    // short debounce coalesces slider drags
     const timer = window.setTimeout(async () => {
       const needsFonts =
         settings.titleEnabled ||
@@ -79,14 +95,20 @@ export function Preview() {
         if (renderToken.current !== token) return;
       }
 
-      // draw immediately with whatever posters we already have
       draw();
       if (selection.length === 0) {
         setProgress(null);
         return;
       }
 
-      const tilePx = (fit.w * dpr * 1.3) / Math.max(3, settings.columns);
+      const cols = estimateColumns(
+        selection.length,
+        settings.canvasWidth,
+        settings.canvasHeight,
+        settings.autoColumns,
+        settings.columns,
+      );
+      const tilePx = (fit.w * dpr * 1.3) / Math.max(3, cols);
       const bucket = Math.min(widthBucket(tilePx), PREVIEW_MAX_BUCKET);
       const missing = selection.filter(
         (it) =>
@@ -95,6 +117,7 @@ export function Preview() {
       );
       if (missing.length === 0) {
         setProgress(null);
+        setPainted(true);
         return;
       }
 
@@ -108,9 +131,9 @@ export function Preview() {
           bucketsRef.current.set(item.ratingKey, bucket);
           done++;
           setProgress({ done, total: missing.length });
-          // progressive: repaint as posters stream in, throttled
+          setPainted(true);
           const now = performance.now();
-          if (now - lastDraw > 200) {
+          if (now - lastDraw > 180) {
             lastDraw = now;
             draw();
           }
@@ -123,33 +146,48 @@ export function Preview() {
     return () => window.clearTimeout(timer);
   }, [settings, selection, fit, baseUri, server]);
 
+  const showSkeleton = itemsLoading || (!painted && selection.length > 0);
+
   return (
     <div className="preview-wrap" ref={wrapRef}>
       <div className="canvas-frame" style={{ width: fit.w, height: fit.h }}>
         <canvas ref={canvasRef} style={{ width: "100%", height: "100%" }} />
-        {itemsLoading && (
-          <div className="preview-overlay">
-            <span className="spinner big" />
-            <span>Loading your library…</span>
-          </div>
-        )}
+        {showSkeleton && <PreviewSkeleton ar={settings.canvasWidth / settings.canvasHeight} />}
         {!itemsLoading && selection.length === 0 && (
           <div className="preview-overlay">
             <span style={{ fontSize: 32 }}>🎬</span>
             <span>No posters match your filters.</span>
+            <span className="hint">Loosen a filter or raise the poster count.</span>
           </div>
         )}
       </div>
       {progress && (
         <div className="progress-pill">
           <span className="spinner" />
-          {progress.done}/{progress.total}
+          {itemsLoading ? "Loading library" : `${progress.done}/${progress.total}`}
         </div>
       )}
       <div className="preview-caption">
         {settings.canvasWidth} × {settings.canvasHeight} ·{" "}
         {Math.min(selection.length, settings.limit)} posters
       </div>
+    </div>
+  );
+}
+
+/** Shimmering placeholder tiles shown until the first posters paint. */
+function PreviewSkeleton({ ar }: { ar: number }) {
+  const cols = ar >= 1.4 ? 8 : ar >= 0.9 ? 6 : 4;
+  const rows = Math.round(cols / ar) + 1;
+  const cells = cols * rows;
+  return (
+    <div
+      className="preview-skeleton"
+      style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
+    >
+      {Array.from({ length: cells }, (_, i) => (
+        <div key={i} className="skel-tile" style={{ animationDelay: `${(i % cols) * 60 + Math.floor(i / cols) * 30}ms` }} />
+      ))}
     </div>
   );
 }

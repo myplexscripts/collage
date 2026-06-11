@@ -1,11 +1,18 @@
 import { create } from "zustand";
 import {
+  AuthError,
   fetchLibraries,
   fetchLibraryItems,
   fetchServers,
   fetchUser,
   resolveBaseUri,
 } from "./lib/plex";
+import {
+  deleteDesign,
+  duplicateDesign,
+  loadDesigns,
+  saveDesign,
+} from "./lib/designs";
 import { DEFAULT_SETTINGS } from "./lib/presets";
 import { mulberry32 } from "./lib/random";
 import type {
@@ -14,6 +21,7 @@ import type {
   PlexLibrary,
   PlexServer,
   PlexUser,
+  SavedDesign,
 } from "./lib/types";
 
 const TOKEN_KEY = "posterstudio.token";
@@ -38,6 +46,8 @@ interface State {
   excluded: Set<string>;
   settings: CollageSettings;
   error: string | null;
+  notice: string | null;
+  savedDesigns: SavedDesign[];
 
   boot: () => Promise<void>;
   loginSuccess: (token: string) => Promise<void>;
@@ -53,6 +63,12 @@ interface State {
   toggleExcluded: (ratingKey: string) => void;
   clearExcluded: () => void;
   setError: (msg: string | null) => void;
+  setNotice: (msg: string | null) => void;
+  refreshDesigns: () => void;
+  saveCurrentDesign: (name: string) => void;
+  applyDesign: (design: SavedDesign) => void;
+  removeDesign: (id: string) => void;
+  duplicateSavedDesign: (id: string) => void;
 }
 
 function loadSettings(): CollageSettings {
@@ -86,6 +102,8 @@ export const useStore = create<State>((set, get) => ({
   excluded: new Set<string>(),
   settings: loadSettings(),
   error: null,
+  notice: null,
+  savedDesigns: loadDesigns(),
 
   boot: async () => {
     const token = localStorage.getItem(TOKEN_KEY);
@@ -116,6 +134,10 @@ export const useStore = create<State>((set, get) => ({
       ]);
       set({ user, servers, serversLoading: false });
     } catch (e) {
+      if (e instanceof AuthError) {
+        handleAuthError(set);
+        return;
+      }
       set({ error: (e as Error).message, serversLoading: false });
     }
   },
@@ -150,6 +172,10 @@ export const useStore = create<State>((set, get) => ({
         connecting: null,
       });
     } catch (e) {
+      if (e instanceof AuthError) {
+        handleAuthError(set);
+        return;
+      }
       set({ connecting: null, error: (e as Error).message });
     }
   },
@@ -188,6 +214,10 @@ export const useStore = create<State>((set, get) => ({
       );
       set({ items: results.flat(), itemsLoading: false, itemsKey: key });
     } catch (e) {
+      if (e instanceof AuthError) {
+        handleAuthError(set);
+        return;
+      }
       set({ itemsLoading: false, error: (e as Error).message });
     }
   },
@@ -220,7 +250,45 @@ export const useStore = create<State>((set, get) => ({
   clearExcluded: () => set({ excluded: new Set() }),
 
   setError: (msg) => set({ error: msg }),
+  setNotice: (msg) => set({ notice: msg }),
+
+  refreshDesigns: () => set({ savedDesigns: loadDesigns() }),
+
+  saveCurrentDesign: (name) => {
+    try {
+      const savedDesigns = saveDesign(name, get().settings);
+      set({ savedDesigns, notice: `Saved “${name.trim() || "Untitled design"}”` });
+    } catch (e) {
+      set({ error: (e as Error).message });
+    }
+  },
+
+  applyDesign: (design) => {
+    const settings = { ...DEFAULT_SETTINGS, ...design.settings };
+    saveSettings(settings);
+    set({ settings, notice: `Opened “${design.name}”` });
+  },
+
+  removeDesign: (id) => set({ savedDesigns: deleteDesign(id) }),
+
+  duplicateSavedDesign: (id) => set({ savedDesigns: duplicateDesign(id) }),
 }));
+
+function handleAuthError(set: (partial: Partial<State>) => void) {
+  localStorage.removeItem(TOKEN_KEY);
+  set({
+    phase: "login",
+    token: null,
+    user: null,
+    servers: [],
+    server: null,
+    baseUri: null,
+    serversLoading: false,
+    connecting: null,
+    itemsLoading: false,
+    error: "Your Plex session expired. Please sign in again.",
+  });
+}
 
 /** Filter + sort + limit the library into the final poster list. */
 export function selectCollageItems(

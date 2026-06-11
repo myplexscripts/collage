@@ -4,8 +4,11 @@ import { useStore } from "../store";
 
 export function LoginScreen() {
   const loginSuccess = useStore((s) => s.loginSuccess);
+  const storeError = useStore((s) => s.error);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const error = localError ?? storeError;
+  const setError = setLocalError;
   const pollRef = useRef<number | null>(null);
 
   useEffect(
