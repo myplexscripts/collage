@@ -9,6 +9,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  actions: read
 
 concurrency:
   group: pages
@@ -42,6 +43,25 @@ jobs:
       - uses: actions/configure-pages@v5
         with:
           enablement: true
+      # if Pages is still in "deploy from branch" mode, GitHub's legacy build
+      # races this workflow on every push and republishes the raw source over
+      # our deployment; wait it out so our deploy always lands last and wins
+      - name: Wait for legacy Pages build to finish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for i in $(seq 1 30); do
+            busy=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository }}/actions/runs?per_page=50" \
+              | jq '[.workflow_runs[] | select((.path | startswith("dynamic/pages")) and (.status != "completed"))] | length')
+            if [ "$busy" = "0" ]; then
+              echo "No legacy Pages build running."
+              break
+            fi
+            echo "Legacy Pages build still running, waiting... ($i)"
+            sleep 10
+          done
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
